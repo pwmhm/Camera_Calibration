@@ -1,24 +1,38 @@
 import argparse
 
+mode = ["rectify", "point_cloud"]
+
 parser = argparse.ArgumentParser(description="Mono/Stereo Calibration", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
+parser.add_argument('-m', '--m', metavar="Mode", default="rectify", choices=mode,
+                    help="Choose between rectifying images or generating point cloud")
 parser.add_argument('-dpath', '--dpath', metavar="Image Directory", default="M:\\CODE\\Dataset\\Vaccinium\\Color",
                     help = "Directories in which the images are stored")
-parser.add_argument('-par', '--par', metavar="Camera Parameters", default="M:\\CODE\\Dataset\\Calibration\\Vaccinium_stereo.matrices",
+parser.add_argument('-param', '--param', metavar="Camera Parameters", default="M:\\CODE\\Dataset\\Calibration\\Vaccinium_stereo.matrices",
                     help = "Files which contain the calibrated camera parameters")
 parser.add_argument('-s', '--s', metavar="Save Dir", default="M:\\CODE\\Dataset\\Vaccinium\\Rectify",
                     help = "Where to store rectified images")
-parser.add_argument('-pc', '--pc', metavar="Point Cloud", default=False, type=bool)
+parser.add_argument('-rd', '--rd', metavar="Rectified Dir", default="",
+                    help = "Directory of already rectified files")
+parser.add_argument('-pd', '--pd', metavar="Data Size", default =-1 , type = int,
+                    help = "Data size for point cloud generation. -1 for all data")
 parser.add_argument('-d', '--d', metavar="Depth Dir", default="M:\\CODE\\Dataset\\Vaccinium\\Depth",
                     help = "Disparity images for point cloud, if not available will generate disparity from LR image")
 
 
 
 def main() :
-    Left, Right, Q = rectify_stereo(args.dpath, args.par, args.s)
 
-    if args.pc == True :
+    K1, D1, K2, D2, imsize, R, T = get_camera_params(args.param)
+
+    if args.m == "rectify" :
+       rectify_stereo(K1, D1, K2, D2, imsize, R, T, args.dpath, args.s)
+
+    elif args.m == "point_cloud" :
         Depth_Im = []
+        _, _, _, _, Q, _, _ = cv2.stereoRectify(K1, D1, K2, D2, imsize, R, T, flags=cv2.CALIB_ZERO_DISPARITY,
+                                                alpha=-1)
+        Left, Right = get_rectified(args.rd, args.pd)
         if args.d :
             for filename in glob.glob(args.d):
                 im = cv2.imread(filename)
@@ -30,12 +44,34 @@ def main() :
                 Depth_Im.append(disp)
         generate_point_cloud(Left,Depth_Im,Q)
 
+def get_rectified(path, amount) :
 
+    Left = []
+    Right =[]
+    P = os.path.join(path, "Left", "*.png")
+
+    i = 0
+    for filename in sorted(glob.glob(P)) :
+        if i == amount :
+            break
+        i += 1
+        img = cv2.imread(filename)
+        Left.append(img)
+
+    i=0
+    P = os.path.join(path, "Right", "*.png")
+    for filename in sorted(glob.glob(P)) :
+        if i == amount :
+            break
+        i += 1
+        img = cv2.imread(filename)
+        Right.append(img)
+
+    return Left, Right
 
 
 
 def retrieve_and_rectify_and_save(path,x,y,savex, side) :
-    Rectified = []
     for filename in glob.glob(os.path.join(path,side,"*.png")):
         real_name = os.path.split(filename)
         save = os.path.join(savex, side)
@@ -44,11 +80,9 @@ def retrieve_and_rectify_and_save(path,x,y,savex, side) :
         save1 = os.path.join(save, real_name[1])
         unrect_im = cv2.imread(filename)
         rect_im = cv2.remap(unrect_im, x, y, cv2.INTER_LINEAR)
-        Rectified.append(rect_im)
         cv2.imwrite(save1, rect_im)
-    return Rectified
 
-def rectify_stereo(impath, param_path, save_path) :
+def get_camera_params(param_path) :
     with open(param_path, "rb") as handle:
         cmtx = pickle.load(handle)
 
@@ -60,15 +94,19 @@ def rectify_stereo(impath, param_path, save_path) :
     R = cmtx['Rrect']
     T = cmtx['Trect']
 
+    return K1, D1, K2, D2, imsize, R, T
+
+def rectify_stereo(K1, D1, K2, D2, imsize, R, T, impath, save_path) :
+
+
     R1, R2, P1, P2, Q, roi1, roi2 = cv2.stereoRectify(K1, D1, K2, D2, imsize, R, T, flags=cv2.CALIB_ZERO_DISPARITY,
                                                       alpha=-1)
 
     lmapx, lmapy = cv2.initUndistortRectifyMap(K1, D1, R1, P1, imsize, cv2.CV_32FC1)
     rmapx, rmapy = cv2.initUndistortRectifyMap(K2, D2, R2, P2, imsize, cv2.CV_32FC1)
 
-    Rectified_left = retrieve_and_rectify_and_save(impath, lmapx, lmapy, save_path, side = "Left")
-    Rectified_right = retrieve_and_rectify_and_save(impath, rmapx, rmapy, save_path, side="Right")
-    return Rectified_left, Rectified_right, Q
+    retrieve_and_rectify_and_save(impath, lmapx, lmapy, save_path, side = "Left")
+    retrieve_and_rectify_and_save(impath, rmapx, rmapy, save_path, side="Right")
 
 def write_ply(fn, verts, colors):
     ply_header = '''ply
