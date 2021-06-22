@@ -25,7 +25,7 @@ parser.add_argument('-imsize', '--imsize', metavar="Image Size", default=(2048,1
                     help= "The dimensions of the image that will be used for calibration. Should be uniform")
 parser.add_argument('-cdim', '--cdim', metavar="Chessboard Size", default=(12,9), type=int, nargs=2,
                     help= "Amount of squares (minus 1) going in the x and y direction")
-parser.add_argument('-cl', '--cl', metavar="Square Size", default=1, type=int,
+parser.add_argument('-cl', '--cl', metavar="Square Size", default=1, type=float,
                     help="Length of the sides of the square in cm")
 parser.add_argument('-mos', '--mos', metavar="Mono or Stereo", default="mono", choices=camera_type,
                     help="Type of the camera which will be calibrated")
@@ -112,7 +112,6 @@ def reproject_error(K, D, R, T, OP, IP):
         error = cv.norm(IP[i], imgpoints2, cv.NORM_L2) / len(imgpoints2)
         mean_error += error
     return mean_error / len(OP)
-
 
 def find_imagepoints(path,cb_width,cb_height,objp,criteria, showim) :
 
